@@ -78,8 +78,8 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
     const brickWidth = (canvas.width - (brickOffsetLeft * 2) - (brickPadding * (brickColumnCount - 1))) / brickColumnCount;
     const brickHeight = 18;
 
-    // Ball speed increases with stage - Base speed increased as requested
-    const baseSpeed = 4 + (stage * 0.6);
+    // Ball speed increases with stage - Reduced to fix high-speed issue on deployed site
+    const baseSpeed = 2.5 + (stage * 0.3);
     
     let balls: Ball[] = [{
       x: canvas.width / 2,
@@ -250,9 +250,20 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
       ctx.closePath();
     }
 
+    function drawHUD() {
+      if (!ctx) return;
+      ctx.font = "bold 14px Arial";
+      ctx.fillStyle = "rgba(100, 116, 139, 0.6)";
+      ctx.textAlign = "left";
+      ctx.fillText(`Stage: ${stage}`, 15, 25);
+      ctx.textAlign = "right";
+      ctx.fillText(`Score: ${score}`, canvas!.width - 15, 25);
+    }
+
     function draw() {
       if (!ctx || !canvas || gameState !== 'playing') return;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawHUD();
       drawBricks();
       drawBalls();
       drawPaddle();
@@ -348,21 +359,12 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
   }, [gameState, stage]);
 
   return (
-    <div className="flex flex-col items-center space-y-4 w-full">
-      <div className="flex justify-between w-full px-2 text-sm font-bold text-slate-500">
-        <div className="flex gap-4">
-          <span>Stage: {stage}</span>
-          <span>Score: {score}</span>
-        </div>
-        {gameState === 'gameover' && <span className="text-red-500">Game Over!</span>}
-        {gameState === 'win' && <span className="text-green-500">All Stages Clear!</span>}
-      </div>
-      
-      <div className="relative bg-slate-100 rounded-2xl overflow-hidden border border-slate-200 w-full aspect-[4/5] max-w-[400px]">
+    <div className="flex flex-col items-center space-y-3 w-full">
+      <div className="relative bg-slate-100 rounded-2xl overflow-hidden border border-slate-200 w-full aspect-[4/4.5] max-w-[400px]">
         <canvas
           ref={canvasRef}
           width={400}
-          height={500}
+          height={450}
           className="w-full h-full touch-none"
         />
         
@@ -394,6 +396,9 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
                   다음 스테이지
                 </button>
               </>
+            )}
+            {gameState === 'gameover' && (
+              <h4 className="text-2xl font-bold text-red-500 mb-4">Game Over!</h4>
             )}
             {(gameState === 'gameover' || gameState === 'win') && (
               <>

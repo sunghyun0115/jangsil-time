@@ -74,6 +74,10 @@ export default function TypingGame({ onFinish }: TypingGameProps) {
       setScore((prev) => prev + 1);
       setUserInput('');
       getNewWord();
+      // Aggressively clear the DOM element to prevent IME leftovers
+      e.target.value = '';
+    } else {
+      setUserInput(value);
     }
   };
 
@@ -134,6 +138,10 @@ export default function TypingGame({ onFinish }: TypingGameProps) {
               placeholder="여기에 입력하세요"
               className="w-full p-4 bg-white border-2 border-blue-200 rounded-2xl text-center text-xl font-bold focus:outline-none focus:border-blue-500 transition-all shadow-sm"
               autoFocus
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck="false"
             />
           </div>
         )}
