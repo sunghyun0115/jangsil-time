@@ -5,10 +5,54 @@ interface BrickBreakerProps {
   onFinish: () => void;
 }
 
+type ItemType = 'wider_paddle' | 'extra_ball' | 'slow_ball' | 'shield';
+
+interface Item {
+  x: number;
+  y: number;
+  type: ItemType;
+  status: number;
+}
+
+interface Ball {
+  x: number;
+  y: number;
+  dx: number;
+  dy: number;
+  radius: number;
+}
+
 export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [gameState, setGameState] = useState<'ready' | 'playing' | 'gameover' | 'win'>('ready');
+  const [gameState, setGameState] = useState<'ready' | 'playing' | 'gameover' | 'win' | 'next_stage'>('ready');
   const [score, setScore] = useState(0);
+  const [stage, setStage] = useState(1);
+
+  const getBrickLayout = (currentStage: number) => {
+    const layouts: { [key: number]: number[][] } = {
+      1: [
+        [1, 1, 1, 1, 1],
+        [1, 1, 1, 1, 1],
+        [1, 1, 1, 1, 1],
+        [1, 1, 1, 1, 1],
+      ],
+      2: [
+        [0, 1, 0, 1, 0],
+        [1, 1, 1, 1, 1],
+        [1, 1, 1, 1, 1],
+        [0, 1, 1, 1, 0],
+        [0, 0, 1, 0, 0],
+      ],
+      3: [
+        [1, 0, 1, 0, 1],
+        [0, 1, 0, 1, 0],
+        [1, 0, 1, 0, 1],
+        [0, 1, 0, 1, 0],
+        [1, 1, 1, 1, 1],
+      ],
+    };
+    return layouts[currentStage] || layouts[1].map(row => row.map(() => (Math.random() > 0.3 ? 1 : 0)));
+  };
 
   useEffect(() => {
     if (gameState !== 'playing') return;
@@ -20,22 +64,34 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
     if (!ctx) return;
 
     // Game constants
-    const ballRadius = 8;
-    const paddleHeight = 10;
-    const paddleWidth = 75;
-    const brickRowCount = 5;
-    const brickColumnCount = 4;
-    const brickWidth = (canvas.width - 40) / brickColumnCount;
-    const brickHeight = 20;
-    const brickPadding = 10;
-    const brickOffsetTop = 30;
-    const brickOffsetLeft = 20;
+    const paddleHeight = 12;
+    let currentPaddleWidth = Math.max(75 - (stage * 5), 50);
+    let hasShield = false;
+    
+    const currentLayout = getBrickLayout(stage);
+    const brickColumnCount = currentLayout.length;
+    const brickRowCount = currentLayout[0].length;
+    
+    const brickPadding = 8;
+    const brickOffsetTop = 40;
+    const brickOffsetLeft = 15;
+    const brickWidth = (canvas.width - (brickOffsetLeft * 2) - (brickPadding * (brickColumnCount - 1))) / brickColumnCount;
+    const brickHeight = 18;
 
-    let x = canvas.width / 2;
-    let y = canvas.height - 30;
-    let dx = 2;
-    let dy = -2;
-    let paddleX = (canvas.width - paddleWidth) / 2;
+    // Ball speed increases with stage - Base speed increased as requested
+    const baseSpeed = 4 + (stage * 0.6);
+    
+    let balls: Ball[] = [{
+      x: canvas.width / 2,
+      y: canvas.height - 40,
+      dx: baseSpeed * (Math.random() > 0.5 ? 1 : -1),
+      dy: -baseSpeed,
+      radius: 8
+    }];
+
+    let items: Item[] = [];
+    
+    let paddleX = (canvas.width - currentPaddleWidth) / 2;
     let rightPressed = false;
     let leftPressed = false;
 
@@ -43,7 +99,7 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
     for (let c = 0; c < brickColumnCount; c++) {
       bricks[c] = [];
       for (let r = 0; r < brickRowCount; r++) {
-        bricks[c][r] = { x: 0, y: 0, status: 1 };
+        bricks[c][r] = { x: 0, y: 0, status: currentLayout[c][r] };
       }
     }
 
@@ -58,14 +114,17 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
     };
 
     const touchHandler = (e: TouchEvent) => {
-      const relativeX = e.touches[0].clientX - canvas.offsetLeft;
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const relativeX = (e.touches[0].clientX - rect.left) * (canvas.width / rect.width);
       if (relativeX > 0 && relativeX < canvas.width) {
-        paddleX = relativeX - paddleWidth / 2;
+        paddleX = relativeX - currentPaddleWidth / 2;
       }
     };
 
     document.addEventListener("keydown", keyDownHandler, false);
     document.addEventListener("keyup", keyUpHandler, false);
+    canvas.addEventListener("touchstart", touchHandler, { passive: false });
     canvas.addEventListener("touchmove", touchHandler, { passive: false });
 
     function collisionDetection() {
@@ -73,12 +132,39 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
         for (let r = 0; r < brickRowCount; r++) {
           const b = bricks[c][r];
           if (b.status === 1) {
-            if (x > b.x && x < b.x + brickWidth && y > b.y && y < b.y + brickHeight) {
-              dy = -dy;
-              b.status = 0;
-              setScore((s) => s + 1);
-              if (bricks.every(col => col.every(brick => brick.status === 0))) {
-                setGameState('win');
+            for (let i = 0; i < balls.length; i++) {
+              const ball = balls[i];
+              if (ball.x > b.x && ball.x < b.x + brickWidth && ball.y > b.y && ball.y < b.y + brickHeight) {
+                ball.dy = -ball.dy;
+                b.status = 0;
+                setScore((s) => s + 10);
+
+                // Drop items with 20% probability
+                if (Math.random() < 0.2) {
+                  const types: ItemType[] = ['wider_paddle', 'extra_ball', 'slow_ball', 'shield'];
+                  items.push({
+                    x: b.x + brickWidth / 2,
+                    y: b.y + brickHeight / 2,
+                    type: types[Math.floor(Math.random() * types.length)],
+                    status: 1
+                  });
+                }
+                
+                // Check if all bricks are cleared
+                let allCleared = true;
+                for (let i = 0; i < brickColumnCount; i++) {
+                  for (let j = 0; j < brickRowCount; j++) {
+                    if (bricks[i][j].status === 1) {
+                      allCleared = false;
+                      break;
+                    }
+                  }
+                  if (!allCleared) break;
+                }
+                
+                if (allCleared) {
+                  setGameState('next_stage');
+                }
               }
             }
           }
@@ -86,19 +172,24 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
       }
     }
 
-    function drawBall() {
+    function drawBalls() {
       if (!ctx) return;
-      ctx.beginPath();
-      ctx.arc(x, y, ballRadius, 0, Math.PI * 2);
-      ctx.fillStyle = "#3b82f6";
-      ctx.fill();
-      ctx.closePath();
+      balls.forEach(ball => {
+        ctx.beginPath();
+        ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+        ctx.fillStyle = "#3b82f6";
+        ctx.fill();
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = "#3b82f6";
+        ctx.closePath();
+        ctx.shadowBlur = 0;
+      });
     }
 
     function drawPaddle() {
       if (!ctx) return;
       ctx.beginPath();
-      ctx.rect(paddleX, canvas!.height - paddleHeight - 5, paddleWidth, paddleHeight);
+      ctx.roundRect(paddleX, canvas!.height - paddleHeight - 15, currentPaddleWidth, paddleHeight, 5);
       ctx.fillStyle = "#1e293b";
       ctx.fill();
       ctx.closePath();
@@ -114,8 +205,8 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
             bricks[c][r].x = brickX;
             bricks[c][r].y = brickY;
             ctx.beginPath();
-            ctx.rect(brickX, brickY, brickWidth, brickHeight);
-            ctx.fillStyle = `hsl(${c * 60 + 200}, 70%, 60%)`;
+            ctx.roundRect(brickX, brickY, brickWidth, brickHeight, 3);
+            ctx.fillStyle = `hsl(${(c * 40 + r * 20 + stage * 30) % 360}, 70%, 60%)`;
             ctx.fill();
             ctx.closePath();
           }
@@ -123,36 +214,125 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
       }
     }
 
+    function drawItems() {
+      if (!ctx) return;
+      items.forEach(item => {
+        if (item.status === 1) {
+          ctx.beginPath();
+          ctx.arc(item.x, item.y, 10, 0, Math.PI * 2);
+          
+          let color = "#000";
+          let label = "";
+          switch(item.type) {
+            case 'wider_paddle': color = "#f59e0b"; label = "W"; break;
+            case 'extra_ball': color = "#10b981"; label = "+"; break;
+            case 'slow_ball': color = "#6366f1"; label = "S"; break;
+            case 'shield': color = "#ec4899"; label = "H"; break;
+          }
+          
+          ctx.fillStyle = color;
+          ctx.fill();
+          ctx.fillStyle = "#fff";
+          ctx.font = "bold 10px Arial";
+          ctx.textAlign = "center";
+          ctx.fillText(label, item.x, item.y + 4);
+          ctx.closePath();
+        }
+      });
+    }
+
+    function drawShield() {
+      if (!ctx || !hasShield) return;
+      ctx.beginPath();
+      ctx.rect(0, canvas!.height - 5, canvas!.width, 5);
+      ctx.fillStyle = "rgba(236, 72, 153, 0.5)";
+      ctx.fill();
+      ctx.closePath();
+    }
+
     function draw() {
-      if (!ctx || !canvas) return;
+      if (!ctx || !canvas || gameState !== 'playing') return;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       drawBricks();
-      drawBall();
+      drawBalls();
       drawPaddle();
+      drawItems();
+      drawShield();
       collisionDetection();
 
-      if (x + dx > canvas.width - ballRadius || x + dx < ballRadius) {
-        dx = -dx;
-      }
-      if (y + dy < ballRadius) {
-        dy = -dy;
-      } else if (y + dy > canvas.height - ballRadius - 5) {
-        if (x > paddleX && x < paddleX + paddleWidth) {
-          dy = -dy;
-        } else {
-          setGameState('gameover');
-          return;
+      // Move items
+      items.forEach(item => {
+        if (item.status === 1) {
+          item.y += 2;
+          // Paddle collision
+          if (item.y + 10 > canvas.height - paddleHeight - 15 && 
+              item.x > paddleX && item.x < paddleX + currentPaddleWidth) {
+            item.status = 0;
+            // Apply effect
+            switch(item.type) {
+              case 'wider_paddle':
+                currentPaddleWidth = Math.min(currentPaddleWidth + 30, 150);
+                break;
+              case 'extra_ball':
+                balls.push({
+                  x: paddleX + currentPaddleWidth / 2,
+                  y: canvas.height - 40,
+                  dx: baseSpeed * (Math.random() > 0.5 ? 1 : -1),
+                  dy: -baseSpeed,
+                  radius: 8
+                });
+                break;
+              case 'slow_ball':
+                balls.forEach(b => {
+                  b.dx *= 0.7;
+                  b.dy *= 0.7;
+                });
+                break;
+              case 'shield':
+                hasShield = true;
+                break;
+            }
+          }
+          if (item.y > canvas.height) item.status = 0;
         }
+      });
+
+      // Move balls
+      for (let i = balls.length - 1; i >= 0; i--) {
+        const ball = balls[i];
+        if (ball.x + ball.dx > canvas.width - ball.radius || ball.x + ball.dx < ball.radius) {
+          ball.dx = -ball.dx;
+        }
+        if (ball.y + ball.dy < ball.radius) {
+          ball.dy = -ball.dy;
+        } else if (ball.y + ball.dy > canvas.height - ball.radius - 15) {
+          if (ball.x > paddleX && ball.x < paddleX + currentPaddleWidth) {
+            const hitPos = (ball.x - (paddleX + currentPaddleWidth / 2)) / (currentPaddleWidth / 2);
+            ball.dx = baseSpeed * hitPos * 1.5;
+            ball.dy = -ball.dy;
+          } else if (ball.y + ball.dy > canvas.height - ball.radius) {
+            if (hasShield) {
+              hasShield = false;
+              ball.dy = -ball.dy;
+            } else {
+              balls.splice(i, 1);
+              if (balls.length === 0) {
+                setGameState('gameover');
+                return;
+              }
+            }
+          }
+        }
+        ball.x += ball.dx;
+        ball.y += ball.dy;
       }
 
-      if (rightPressed && paddleX < canvas.width - paddleWidth) {
-        paddleX += 7;
+      if (rightPressed && paddleX < canvas.width - currentPaddleWidth) {
+        paddleX += 8;
       } else if (leftPressed && paddleX > 0) {
-        paddleX -= 7;
+        paddleX -= 8;
       }
 
-      x += dx;
-      y += dy;
       requestAnimationFrame(draw);
     }
 
@@ -162,23 +342,27 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
       cancelAnimationFrame(animationId);
       document.removeEventListener("keydown", keyDownHandler);
       document.removeEventListener("keyup", keyUpHandler);
+      canvas.removeEventListener("touchstart", touchHandler);
       canvas.removeEventListener("touchmove", touchHandler);
     };
-  }, [gameState]);
+  }, [gameState, stage]);
 
   return (
     <div className="flex flex-col items-center space-y-4 w-full">
       <div className="flex justify-between w-full px-2 text-sm font-bold text-slate-500">
-        <span>Score: {score}</span>
+        <div className="flex gap-4">
+          <span>Stage: {stage}</span>
+          <span>Score: {score}</span>
+        </div>
         {gameState === 'gameover' && <span className="text-red-500">Game Over!</span>}
-        {gameState === 'win' && <span className="text-green-500">You Win!</span>}
+        {gameState === 'win' && <span className="text-green-500">All Stages Clear!</span>}
       </div>
       
-      <div className="relative bg-slate-100 rounded-2xl overflow-hidden border border-slate-200 w-full aspect-[4/5]">
+      <div className="relative bg-slate-100 rounded-2xl overflow-hidden border border-slate-200 w-full aspect-[4/5] max-w-[400px]">
         <canvas
           ref={canvasRef}
-          width={320}
-          height={400}
+          width={400}
+          height={500}
           className="w-full h-full touch-none"
         />
         
@@ -196,14 +380,31 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
                 </button>
               </>
             )}
+            {gameState === 'next_stage' && (
+              <>
+                <h4 className="text-2xl font-bold text-green-600 mb-2">Stage {stage} Clear!</h4>
+                <p className="text-slate-500 text-sm mb-6">다음 스테이지로 넘어갑니다.</p>
+                <button
+                  onClick={() => {
+                    setStage(s => s + 1);
+                    setGameState('playing');
+                  }}
+                  className="px-8 py-4 bg-green-600 text-white rounded-xl font-bold shadow-lg hover:bg-green-700 transition-all"
+                >
+                  다음 스테이지
+                </button>
+              </>
+            )}
             {(gameState === 'gameover' || gameState === 'win') && (
               <>
                 <h4 className="text-2xl font-bold text-slate-800 mb-4">
                   {gameState === 'gameover' ? '아쉬워요!' : '대단해요!'}
                 </h4>
+                <p className="text-slate-500 mb-6">최종 점수: {score}</p>
                 <button
                   onClick={() => {
                     setScore(0);
+                    setStage(1);
                     setGameState('playing');
                   }}
                   className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg hover:bg-blue-700 transition-all"
@@ -217,9 +418,30 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
         )}
       </div>
       
-      <p className="text-[10px] text-slate-400 text-center">
-        화면을 터치하거나 화살표 키로 패들을 움직이세요.
-      </p>
+      <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 w-full space-y-2">
+        <p className="text-[10px] text-slate-400 text-center leading-relaxed">
+          화면을 터치하여 패들을 조작하세요.<br/>
+          스테이지가 올라갈수록 공이 빨라지고 패들이 작아집니다!
+        </p>
+        <div className="flex justify-center gap-3">
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded-full bg-[#f59e0b] flex items-center justify-center text-[6px] text-white font-bold">W</div>
+            <span className="text-[8px] text-slate-500">패들 확장</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded-full bg-[#10b981] flex items-center justify-center text-[6px] text-white font-bold">+</div>
+            <span className="text-[8px] text-slate-500">공 추가</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded-full bg-[#6366f1] flex items-center justify-center text-[6px] text-white font-bold">S</div>
+            <span className="text-[8px] text-slate-500">속도 감소</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded-full bg-[#ec4899] flex items-center justify-center text-[6px] text-white font-bold">H</div>
+            <span className="text-[8px] text-slate-500">바닥 보호</span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

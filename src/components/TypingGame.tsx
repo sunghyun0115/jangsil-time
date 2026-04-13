@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { RefreshCw, Keyboard, Trophy, Timer } from 'lucide-react';
-import { cn } from '@/src/lib/utils';
+import { cn } from '@/lib/utils';
 
 interface TypingGameProps {
   onFinish: () => void;
@@ -12,7 +12,17 @@ const WORDS = [
   '바다', '산', '강', '하늘', '구름', '태양', '달', '별', '바람', '비',
   '컴퓨터', '핸드폰', '마우스', '키보드', '모니터', '노트북', '인터넷', '코딩', '프로그램', '데이터',
   '학교', '회사', '집', '공원', '도서관', '병원', '은행', '식당', '카페', '영화관',
-  '사랑', '행복', '기쁨', '슬픔', '화남', '즐거움', '평화', '희망', '용기', '지혜'
+  '사랑', '행복', '기쁨', '슬픔', '화남', '즐거움', '평화', '희망', '용기', '지혜',
+  '피자', '치킨', '햄버거', '파스타', '떡볶이', '김밥', '라면', '우동', '초밥', '만두',
+  '축구', '농구', '야구', '배구', '테니스', '골프', '수영', '달리기', '등산', '낚시',
+  '빨강', '파랑', '노랑', '초록', '보라', '주황', '검정', '하얀', '분홍', '회색'
+];
+
+const HARD_WORDS = [
+  '알고리즘', '인공지능', '데이터베이스', '네트워크', '운영체제', '객체지향', '프레임워크', '라이브러리', '인터페이스', '추상화',
+  '민주주의', '자본주의', '사회주의', '공산주의', '자유주의', '보수주의', '진보주의', '평화주의', '인본주의', '실용주의',
+  '우주정거장', '태양에너지', '지구온난화', '생태계파괴', '미세먼지', '신재생에너지', '유전자변형', '나노기술', '양자역학', '상대성원론',
+  '자기계발', '동기부여', '인간관계', '의사소통', '리더십', '팔로워십', '시간관리', '스트레스', '마인드셋', '회복탄력성'
 ];
 
 export default function TypingGame({ onFinish }: TypingGameProps) {
@@ -22,11 +32,16 @@ export default function TypingGame({ onFinish }: TypingGameProps) {
   const [score, setScore] = useState(0);
   const [timeLeft, setTimeLeft] = useState(30);
   const [wpm, setWpm] = useState(0);
+  const [isHard, setIsHard] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const getNewWord = useCallback(() => {
-    const randomIndex = Math.floor(Math.random() * WORDS.length);
-    setCurrentWord(WORDS[randomIndex]);
+    // 20% chance to get a hard word
+    const isHardWord = Math.random() < 0.2;
+    setIsHard(isHardWord);
+    const list = isHardWord ? HARD_WORDS : WORDS;
+    const randomIndex = Math.floor(Math.random() * list.length);
+    setCurrentWord(list[randomIndex]);
   }, []);
 
   const startGame = () => {
@@ -95,8 +110,20 @@ export default function TypingGame({ onFinish }: TypingGameProps) {
         {gameState === 'playing' && (
           <div className="w-full space-y-8 text-center">
             <div className="space-y-2">
-              <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">다음 단어</p>
-              <h5 className="text-4xl font-black text-slate-800 tracking-tight">{currentWord}</h5>
+              <div className="flex items-center justify-center gap-2">
+                <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">다음 단어</p>
+                {isHard && (
+                  <span className="px-2 py-0.5 bg-red-100 text-red-600 text-[10px] font-bold rounded-full animate-pulse">
+                    HARD
+                  </span>
+                )}
+              </div>
+              <h5 className={cn(
+                "text-4xl font-black tracking-tight transition-all",
+                isHard ? "text-red-600 scale-110" : "text-slate-800"
+              )}>
+                {currentWord}
+              </h5>
             </div>
             
             <input
