@@ -37,9 +37,13 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
         [1, 1, 1, 1, 1],
         [1, 1, 1, 1, 1],
         [1, 1, 1, 1, 1],
+        [1, 1, 1, 1, 1],
+        [1, 1, 1, 1, 1],
       ],
       2: [
-        [0, 1, 0, 1, 0],
+        [0, 1, 1, 1, 0],
+        [1, 1, 1, 1, 1],
+        [1, 1, 1, 1, 1],
         [1, 1, 1, 1, 1],
         [1, 1, 1, 1, 1],
         [0, 1, 1, 1, 0],
@@ -47,9 +51,11 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
       ],
       3: [
         [1, 0, 1, 0, 1],
-        [0, 1, 0, 1, 0],
+        [1, 1, 1, 1, 1],
         [1, 0, 1, 0, 1],
-        [0, 1, 0, 1, 0],
+        [1, 1, 1, 1, 1],
+        [1, 0, 1, 0, 1],
+        [1, 1, 1, 1, 1],
         [1, 1, 1, 1, 1],
       ],
     };
@@ -82,6 +88,8 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
 
     // Ball speed increases with stage - Increased by 10% as requested
     const baseSpeed = (2.5 + (stage * 0.3)) * 1.1;
+    
+    let livesLeft = lives; // Use local variable to avoid stale closure
     
     let balls: Ball[] = [{
       x: canvas.width / 2,
@@ -334,8 +342,9 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
             } else {
               balls.splice(i, 1);
               if (balls.length === 0) {
-                if (lives > 1) {
-                  setLives(l => l - 1);
+                if (livesLeft > 1) {
+                  livesLeft--;
+                  setLives(livesLeft);
                   balls.push({
                     x: paddleX + currentPaddleWidth / 2,
                     y: canvas.height - 40,
