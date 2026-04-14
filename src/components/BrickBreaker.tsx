@@ -30,6 +30,10 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
   const [stage, setStage] = useState(1);
   const [lives, setLives] = useState(3);
 
+  // Use refs to avoid stale closures in the game loop
+  const livesRef = useRef(3);
+  const scoreRef = useRef(0);
+
   const getBrickLayout = (currentStage: number) => {
     const layouts: { [key: number]: number[][] } = {
       1: [
@@ -89,7 +93,9 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
     // Ball speed increases with stage - Increased by 10% as requested
     const baseSpeed = (2.5 + (stage * 0.3)) * 1.1;
     
-    let livesLeft = lives; // Use local variable to avoid stale closure
+    // Initialize refs with current state values when starting/restarting
+    livesRef.current = lives;
+    scoreRef.current = score;
     
     let balls: Ball[] = [{
       x: canvas.width / 2,
@@ -151,7 +157,8 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
                   ball.dy = -ball.dy;
                 }
                 b.status = 0;
-                setScore((s) => s + 10);
+                scoreRef.current += 10;
+                setScore(scoreRef.current);
 
                 // Drop items with 33% probability
                 if (Math.random() < 0.33) {
@@ -271,9 +278,9 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
       ctx.textAlign = "left";
       ctx.fillText(`Stage: ${stage}`, 15, 25);
       ctx.textAlign = "center";
-      ctx.fillText(`Lives: ${lives}`, canvas!.width / 2, 25);
+      ctx.fillText(`Lives: ${livesRef.current}`, canvas!.width / 2, 25);
       ctx.textAlign = "right";
-      ctx.fillText(`Score: ${score}`, canvas!.width - 15, 25);
+      ctx.fillText(`Score: ${scoreRef.current}`, canvas!.width - 15, 25);
     }
 
     function draw() {
@@ -342,9 +349,9 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
             } else {
               balls.splice(i, 1);
               if (balls.length === 0) {
-                if (livesLeft > 1) {
-                  livesLeft--;
-                  setLives(livesLeft);
+                if (livesRef.current > 1) {
+                  livesRef.current--;
+                  setLives(livesRef.current);
                   balls.push({
                     x: paddleX + currentPaddleWidth / 2,
                     y: canvas.height - 40,
@@ -353,6 +360,7 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
                     radius: 8
                   });
                 } else {
+                  livesRef.current = 0;
                   setLives(0);
                   setGameState('gameover');
                   return;
