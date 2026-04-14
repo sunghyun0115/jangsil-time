@@ -5,7 +5,7 @@ interface BrickBreakerProps {
   onFinish: () => void;
 }
 
-type ItemType = 'wider_paddle' | 'extra_ball' | 'slow_ball' | 'shield';
+type ItemType = 'wider_paddle' | 'extra_ball' | 'penetrating' | 'shield';
 
 interface Item {
   x: number;
@@ -20,6 +20,7 @@ interface Ball {
   dx: number;
   dy: number;
   radius: number;
+  isPenetrating?: boolean;
 }
 
 export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
@@ -27,6 +28,7 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
   const [gameState, setGameState] = useState<'ready' | 'playing' | 'gameover' | 'win' | 'next_stage'>('ready');
   const [score, setScore] = useState(0);
   const [stage, setStage] = useState(1);
+  const [lives, setLives] = useState(3);
 
   const getBrickLayout = (currentStage: number) => {
     const layouts: { [key: number]: number[][] } = {
@@ -78,8 +80,8 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
     const brickWidth = (canvas.width - (brickOffsetLeft * 2) - (brickPadding * (brickColumnCount - 1))) / brickColumnCount;
     const brickHeight = 18;
 
-    // Ball speed increases with stage - Reduced to fix high-speed issue on deployed site
-    const baseSpeed = 2.5 + (stage * 0.3);
+    // Ball speed increases with stage - Increased by 10% as requested
+    const baseSpeed = (2.5 + (stage * 0.3)) * 1.1;
     
     let balls: Ball[] = [{
       x: canvas.width / 2,
@@ -135,13 +137,17 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
             for (let i = 0; i < balls.length; i++) {
               const ball = balls[i];
               if (ball.x > b.x && ball.x < b.x + brickWidth && ball.y > b.y && ball.y < b.y + brickHeight) {
-                ball.dy = -ball.dy;
+                if (ball.isPenetrating) {
+                  // Don't flip dy if penetrating
+                } else {
+                  ball.dy = -ball.dy;
+                }
                 b.status = 0;
                 setScore((s) => s + 10);
 
-                // Drop items with 20% probability
-                if (Math.random() < 0.2) {
-                  const types: ItemType[] = ['wider_paddle', 'extra_ball', 'slow_ball', 'shield'];
+                // Drop items with 33% probability
+                if (Math.random() < 0.33) {
+                  const types: ItemType[] = ['wider_paddle', 'extra_ball', 'penetrating', 'shield'];
                   items.push({
                     x: b.x + brickWidth / 2,
                     y: b.y + brickHeight / 2,
@@ -177,10 +183,10 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
       balls.forEach(ball => {
         ctx.beginPath();
         ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
-        ctx.fillStyle = "#3b82f6";
+        ctx.fillStyle = ball.isPenetrating ? "#ef4444" : "#3b82f6";
         ctx.fill();
         ctx.shadowBlur = 10;
-        ctx.shadowColor = "#3b82f6";
+        ctx.shadowColor = ball.isPenetrating ? "#ef4444" : "#3b82f6";
         ctx.closePath();
         ctx.shadowBlur = 0;
       });
@@ -226,8 +232,8 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
           switch(item.type) {
             case 'wider_paddle': color = "#f59e0b"; label = "W"; break;
             case 'extra_ball': color = "#10b981"; label = "+"; break;
-            case 'slow_ball': color = "#6366f1"; label = "S"; break;
-            case 'shield': color = "#ec4899"; label = "H"; break;
+            case 'penetrating': color = "#ef4444"; label = "P"; break;
+            case 'shield': color = "#ec4899"; label = "S"; break;
           }
           
           ctx.fillStyle = color;
@@ -256,6 +262,8 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
       ctx.fillStyle = "rgba(100, 116, 139, 0.6)";
       ctx.textAlign = "left";
       ctx.fillText(`Stage: ${stage}`, 15, 25);
+      ctx.textAlign = "center";
+      ctx.fillText(`Lives: ${lives}`, canvas!.width / 2, 25);
       ctx.textAlign = "right";
       ctx.fillText(`Score: ${score}`, canvas!.width - 15, 25);
     }
@@ -293,11 +301,8 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
                   radius: 8
                 });
                 break;
-              case 'slow_ball':
-                balls.forEach(b => {
-                  b.dx *= 0.7;
-                  b.dy *= 0.7;
-                });
+              case 'penetrating':
+                balls.forEach(b => b.isPenetrating = true);
                 break;
               case 'shield':
                 hasShield = true;
@@ -321,6 +326,7 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
             const hitPos = (ball.x - (paddleX + currentPaddleWidth / 2)) / (currentPaddleWidth / 2);
             ball.dx = baseSpeed * hitPos * 1.5;
             ball.dy = -ball.dy;
+            ball.isPenetrating = false; // Reset penetrating on paddle hit
           } else if (ball.y + ball.dy > canvas.height - ball.radius) {
             if (hasShield) {
               hasShield = false;
@@ -328,8 +334,20 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
             } else {
               balls.splice(i, 1);
               if (balls.length === 0) {
-                setGameState('gameover');
-                return;
+                if (lives > 1) {
+                  setLives(l => l - 1);
+                  balls.push({
+                    x: paddleX + currentPaddleWidth / 2,
+                    y: canvas.height - 40,
+                    dx: baseSpeed * (Math.random() > 0.5 ? 1 : -1),
+                    dy: -baseSpeed,
+                    radius: 8
+                  });
+                } else {
+                  setLives(0);
+                  setGameState('gameover');
+                  return;
+                }
               }
             }
           }
@@ -410,6 +428,7 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
                   onClick={() => {
                     setScore(0);
                     setStage(1);
+                    setLives(3);
                     setGameState('playing');
                   }}
                   className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg hover:bg-blue-700 transition-all"
@@ -438,11 +457,11 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
             <span className="text-[8px] text-slate-500">공 추가</span>
           </div>
           <div className="flex items-center gap-1">
-            <div className="w-3 h-3 rounded-full bg-[#6366f1] flex items-center justify-center text-[6px] text-white font-bold">S</div>
-            <span className="text-[8px] text-slate-500">속도 감소</span>
+            <div className="w-3 h-3 rounded-full bg-[#ef4444] flex items-center justify-center text-[6px] text-white font-bold">P</div>
+            <span className="text-[8px] text-slate-500">관통공</span>
           </div>
           <div className="flex items-center gap-1">
-            <div className="w-3 h-3 rounded-full bg-[#ec4899] flex items-center justify-center text-[6px] text-white font-bold">H</div>
+            <div className="w-3 h-3 rounded-full bg-[#ec4899] flex items-center justify-center text-[6px] text-white font-bold">S</div>
             <span className="text-[8px] text-slate-500">바닥 보호</span>
           </div>
         </div>
