@@ -85,7 +85,7 @@ export default function App() {
       }
 
       if (selectedCategory.id === 'nature') {
-        const model = "gemini-2.5-flash-image";
+        const model = "gemini-3.1-flash-image-preview";
         const response = await ai.models.generateContent({
           model,
           contents: {
@@ -93,7 +93,8 @@ export default function App() {
           },
           config: {
             imageConfig: {
-              aspectRatio: "1:1"
+              aspectRatio: "1:1",
+              imageSize: "1K"
             }
           }
         });
@@ -148,7 +149,19 @@ export default function App() {
       }
     } catch (error) {
       console.error("Error generating content:", error);
-      const errorMessage = error instanceof Error ? error.message : '알 수 없는 에러가 발생했습니다.';
+      let errorMessage = '알 수 없는 에러가 발생했습니다.';
+      
+      if (error instanceof Error) {
+        const errorStr = error.message;
+        if (errorStr.includes('429') || errorStr.includes('RESOURCE_EXHAUSTED')) {
+          errorMessage = 'API 사용 한도를 초과했습니다. 잠시(약 1분) 후 다시 시도해주시거나, 이미지 생성 대신 다른 테마를 이용해주세요.';
+        } else if (errorStr.includes('403')) {
+          errorMessage = 'API 접근 권한이 없습니다. API 키 설정을 확인해주세요.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+
       setContent(`에러가 발생했습니다: ${errorMessage}\n\n도움말: GitHub Pages에 배포한 경우, GitHub Secrets에 GEMINI_API_KEY가 설정되어 있는지 확인해주세요.`);
     } finally {
       setIsLoading(false);

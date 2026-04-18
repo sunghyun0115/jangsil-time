@@ -93,10 +93,16 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
     // Ball speed increases with stage - Increased by 10% as requested
     const baseSpeed = (2.5 + (stage * 0.3)) * 1.1;
     
-    // Initialize refs with current state values when starting/restarting
+    let livesRef_local = lives;
+    let scoreRef_local = score;
     livesRef.current = lives;
     scoreRef.current = score;
     
+    // Time tracking for delta time
+    let lastTime = performance.now();
+    const targetFPS = 60;
+    const targetFrameTime = 1000 / targetFPS; // ~16.67ms
+
     let balls: Ball[] = [{
       x: canvas.width / 2,
       y: canvas.height - 40,
@@ -285,6 +291,15 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
 
     function draw() {
       if (!ctx || !canvas || gameState !== 'playing') return;
+
+      // Calculate Delta Time
+      const currentTime = performance.now();
+      const deltaTime = currentTime - lastTime;
+      lastTime = currentTime;
+      
+      // Speed multiplier based on 60FPS target
+      const dtScale = deltaTime / targetFrameTime;
+
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       drawHUD();
       drawBricks();
@@ -297,7 +312,7 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
       // Move items
       items.forEach(item => {
         if (item.status === 1) {
-          item.y += 2;
+          item.y += 2 * dtScale;
           // Paddle collision
           if (item.y + 10 > canvas.height - paddleHeight - 15 && 
               item.x > paddleX && item.x < paddleX + currentPaddleWidth) {
@@ -331,21 +346,26 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
       // Move balls
       for (let i = balls.length - 1; i >= 0; i--) {
         const ball = balls[i];
-        if (ball.x + ball.dx > canvas.width - ball.radius || ball.x + ball.dx < ball.radius) {
+        
+        // Next position based on delta time
+        const nextX = ball.x + (ball.dx * dtScale);
+        const nextY = ball.y + (ball.dy * dtScale);
+
+        if (nextX > canvas.width - ball.radius || nextX < ball.radius) {
           ball.dx = -ball.dx;
         }
-        if (ball.y + ball.dy < ball.radius) {
+        if (nextY < ball.radius) {
           ball.dy = -ball.dy;
-        } else if (ball.y + ball.dy > canvas.height - ball.radius - 15) {
+        } else if (nextY > canvas.height - ball.radius - 15) {
           if (ball.x > paddleX && ball.x < paddleX + currentPaddleWidth) {
             const hitPos = (ball.x - (paddleX + currentPaddleWidth / 2)) / (currentPaddleWidth / 2);
             ball.dx = baseSpeed * hitPos * 1.5;
-            ball.dy = -ball.dy;
+            ball.dy = -Math.abs(ball.dy); // Ensure it goes up
             ball.isPenetrating = false; // Reset penetrating on paddle hit
-          } else if (ball.y + ball.dy > canvas.height - ball.radius) {
+          } else if (nextY > canvas.height - ball.radius) {
             if (hasShield) {
               hasShield = false;
-              ball.dy = -ball.dy;
+              ball.dy = -Math.abs(ball.dy);
             } else {
               balls.splice(i, 1);
               if (balls.length === 0) {
@@ -369,14 +389,14 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
             }
           }
         }
-        ball.x += ball.dx;
-        ball.y += ball.dy;
+        ball.x += ball.dx * dtScale;
+        ball.y += ball.dy * dtScale;
       }
 
       if (rightPressed && paddleX < canvas.width - currentPaddleWidth) {
-        paddleX += 8;
+        paddleX += 8 * dtScale;
       } else if (leftPressed && paddleX > 0) {
-        paddleX -= 8;
+        paddleX -= 8 * dtScale;
       }
 
       requestAnimationFrame(draw);
