@@ -70,14 +70,22 @@ export default function TypingGame({ onFinish }: TypingGameProps) {
     const value = e.target.value;
     setUserInput(value);
 
+    // If the entered value exactly matches the target word
     if (value.trim() === currentWord) {
       setScore((prev) => prev + 1);
       setUserInput('');
       getNewWord();
-      // Aggressively clear the DOM element to prevent IME leftovers
-      e.target.value = '';
-    } else {
-      setUserInput(value);
+      
+      // Forces the input value to be empty and briefly blurs/focuses to clear IME composition
+      const inputEl = e.target;
+      inputEl.value = '';
+      
+      // Sometimes IME leaves ghost characters even after setting value to empty.
+      // A quick blur and focus can help reset the input state in many browsers.
+      inputEl.blur();
+      setTimeout(() => {
+        inputEl.focus();
+      }, 10);
     }
   };
 
