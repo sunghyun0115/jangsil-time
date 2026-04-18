@@ -15,14 +15,23 @@ const WORDS = [
   '사랑', '행복', '기쁨', '슬픔', '화남', '즐거움', '평화', '희망', '용기', '지혜',
   '피자', '치킨', '햄버거', '파스타', '떡볶이', '김밥', '라면', '우동', '초밥', '만두',
   '축구', '농구', '야구', '배구', '테니스', '골프', '수영', '달리기', '등산', '낚시',
-  '빨강', '파랑', '노랑', '초록', '보라', '주황', '검정', '하얀', '분홍', '회색'
+  '빨강', '파랑', '노랑', '초록', '보라', '주황', '검정', '하얀', '분홍', '회색',
+  '단풍', '숲길', '파도', '벌판', '들판', '안개', '이슬', '서리', '번개', '천둥', '노을', '새벽',
+  '시계', '거울', '안경', '가방', '지갑', '우산', '사전', '일기', '사진', '편지', '선물', '상자',
+  '걷기', '뛰기', '웃기', '노래', '춤추기', '수다', '공부', '구경', '산책', '여행', '쇼핑', '요리',
+  '된장국', '비빔밥', '냉면', '불고기', '갈비', '잡채', '미역국', '삼계탕', '보쌈', '족발',
+  '추억', '비밀', '인연', '우정', '축제', '감동', '기적', '열정', '자유', '정의', '행운', '성공',
+  '풍경', '전설', '영웅', '모험', '지구', '우주', '미래', '과거', '현재', '지식', '예능', '드라마'
 ];
 
 const HARD_WORDS = [
   '읊다', '밟다', '핥다', '훑다', '뚫다', '끓다', '닻', '돛', '숯', '옻',
   '낚시', '깎다', '섞다', '묶다', '닦다', '넋', '삯', '몫', '흙', '닭',
   '삶', '젊다', '닮다', '굶다', '옮다', '읊조리다', '흙먼지', '닭싸움', '삶의지혜', '젊은이',
-  '닮은꼴', '굶주림', '옮기다', '여덟', '넓다', '떫다', '옭다', '갉다', '맑다', '묽다'
+  '닮은꼴', '굶주림', '옮기다', '여덟', '넓다', '떫다', '옭다', '갉다', '맑다', '묽다',
+  '깎듯이', '엮다', '꺾다', '깎아지른', '겯다', '굳다', '쏟다', '뻗다', '뼛속', '닻줄', '돛배',
+  '꽃밭', '빛깔', '낯설다', '낯가림', '끝장', '곁가지', '낱알', '밭둑', '잎사귀', '무릎', '갚다',
+  '밑동', '끝동', '겉모양', '꽃망울', '홑몸', '풀섶', '늪지대', '숲속', '무릎베개', '낱낱이', '밭고랑'
 ];
 
 export default function TypingGame({ onFinish }: TypingGameProps) {
@@ -40,9 +49,16 @@ export default function TypingGame({ onFinish }: TypingGameProps) {
     const isHardWord = Math.random() < 0.2;
     setIsHard(isHardWord);
     const list = isHardWord ? HARD_WORDS : WORDS;
-    const randomIndex = Math.floor(Math.random() * list.length);
-    setCurrentWord(list[randomIndex]);
-  }, []);
+    
+    let nextWord = currentWord;
+    // Ensure the new word is different from the current one
+    while (nextWord === currentWord) {
+      const randomIndex = Math.floor(Math.random() * list.length);
+      nextWord = list[randomIndex];
+    }
+    
+    setCurrentWord(nextWord);
+  }, [currentWord]);
 
   const startGame = () => {
     setGameState('playing');
@@ -67,25 +83,21 @@ export default function TypingGame({ onFinish }: TypingGameProps) {
   }, [gameState, timeLeft, score]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setUserInput(value);
+    setUserInput(e.target.value);
+  };
 
-    // If the entered value exactly matches the target word
-    if (value.trim() === currentWord) {
-      setScore((prev) => prev + 1);
-      setUserInput('');
-      getNewWord();
-      
-      // Forces the input value to be empty and briefly blurs/focuses to clear IME composition
-      const inputEl = e.target;
-      inputEl.value = '';
-      
-      // Sometimes IME leaves ghost characters even after setting value to empty.
-      // A quick blur and focus can help reset the input state in many browsers.
-      inputEl.blur();
-      setTimeout(() => {
-        inputEl.focus();
-      }, 10);
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // If the game is active and the user presses Enter or Space
+    if (e.key === ' ' || e.key === 'Enter') {
+      // Check if the input (trimmed) matches the word
+      if (userInput.trim() === currentWord) {
+        e.preventDefault(); // Prevent adding the space/newline to the input
+        setScore((prev) => prev + 1);
+        setUserInput('');
+        getNewWord();
+        // Clear the actual DOM element immediately
+        (e.target as HTMLInputElement).value = '';
+      }
     }
   };
 
@@ -143,6 +155,7 @@ export default function TypingGame({ onFinish }: TypingGameProps) {
               type="text"
               value={userInput}
               onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
               placeholder="여기에 입력하세요"
               className="w-full p-4 bg-white border-2 border-blue-200 rounded-2xl text-center text-xl font-bold focus:outline-none focus:border-blue-500 transition-all shadow-sm"
               autoFocus
@@ -190,7 +203,7 @@ export default function TypingGame({ onFinish }: TypingGameProps) {
       </div>
 
       <p className="text-[10px] text-slate-400 text-center leading-relaxed">
-        단어를 입력하고 공백 없이 정확하게 치면<br />다음 단어로 넘어갑니다.
+        단어를 입력하고 <span className="font-bold text-blue-500">스페이스바</span> 또는 <span className="font-bold text-blue-500">엔터</span>를 치면<br />정답 처리가 되며 다음 단어로 넘어갑니다.
       </p>
     </div>
   );
