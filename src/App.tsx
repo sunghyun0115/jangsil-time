@@ -80,25 +80,44 @@ export default function App() {
   const generateContent = useCallback(async () => {
     setIsLoading(true);
     try {
+      if (!process.env.GEMINI_API_KEY) {
+        throw new Error('GEMINI_API_KEY is not configured. Please add it to your environment variables.');
+      }
+
       if (selectedCategory.id === 'nature') {
         const model = "gemini-2.5-flash-image";
         const response = await ai.models.generateContent({
           model,
-          contents: selectedCategory.prompt,
+          contents: {
+            parts: [{ text: selectedCategory.prompt }]
+          },
+          config: {
+            imageConfig: {
+              aspectRatio: "1:1"
+            }
+          }
         });
         
         let imageUrl = '';
-        for (const part of response.candidates?.[0]?.content?.parts || []) {
-          if (part.inlineData) {
-            imageUrl = `data:image/png;base64,${part.inlineData.data}`;
-            break;
+        const candidates = response.candidates;
+        if (candidates && candidates.length > 0 && candidates[0].content && candidates[0].content.parts) {
+          for (const part of candidates[0].content.parts) {
+            if (part.inlineData) {
+              imageUrl = `data:image/png;base64,${part.inlineData.data}`;
+              break;
+            }
           }
         }
         
         if (imageUrl) {
-          setContent(imageUrl); // Store only the URL if it's an image
+          setContent(imageUrl);
         } else {
-          setContent('풍경 이미지를 생성하는 데 실패했습니다. 다시 시도해주세요.');
+          // If no image part, but there is text, show it
+          if (response.text) {
+            setContent(response.text);
+          } else {
+            setContent('풍경 이미지를 생성하는 데 실패했습니다. 다시 시도해주세요.');
+          }
         }
       } else {
         const model = "gemini-3-flash-preview";
@@ -129,7 +148,8 @@ export default function App() {
       }
     } catch (error) {
       console.error("Error generating content:", error);
-      setContent('에러가 발생했습니다. 다시 시도해주세요.');
+      const errorMessage = error instanceof Error ? error.message : '알 수 없는 에러가 발생했습니다.';
+      setContent(`에러가 발생했습니다: ${errorMessage}\n\n도움말: GitHub Pages에 배포한 경우, GitHub Secrets에 GEMINI_API_KEY가 설정되어 있는지 확인해주세요.`);
     } finally {
       setIsLoading(false);
     }
