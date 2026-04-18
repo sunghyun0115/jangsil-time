@@ -219,26 +219,29 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
             for (let i = 0; i < balls.length; i++) {
               const ball = balls[i];
               if (ball.x > b.x && ball.x < b.x + brickWidth && ball.y > b.y && ball.y < b.y + brickHeight) {
-                if (!ball.isPenetrating) {
+                // Penetrating ball should still bounce on durable bricks (status 2) 
+                // to prevent it from destroying them in a single pass.
+                const shouldBounce = !ball.isPenetrating || b.status === 2;
+                if (shouldBounce) {
                   ball.dy = -ball.dy;
                 }
                 
                 b.status--;
                 
+                // Drop items with 33% probability on EVERY hit (including durable brick hits)
+                if (Math.random() < 0.33) {
+                  const types: ItemType[] = ['wider_paddle', 'extra_ball', 'penetrating', 'shield'];
+                  items.push({
+                    x: b.x + brickWidth / 2,
+                    y: b.y + brickHeight / 2,
+                    type: types[Math.floor(Math.random() * types.length)],
+                    status: 1
+                  });
+                }
+
                 if (b.status === 0) {
                   scoreRef.current += 10;
                   setScore(scoreRef.current);
-
-                  // Drop items with 33% probability
-                  if (Math.random() < 0.33) {
-                    const types: ItemType[] = ['wider_paddle', 'extra_ball', 'penetrating', 'shield'];
-                    items.push({
-                      x: b.x + brickWidth / 2,
-                      y: b.y + brickHeight / 2,
-                      type: types[Math.floor(Math.random() * types.length)],
-                      status: 1
-                    });
-                  }
                 } else {
                   // Hit sound/effect for durable brick could go here
                   scoreRef.current += 2;
@@ -263,8 +266,8 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
                   return true;
                 }
 
-                // If not penetrating, we stop checking this ball for other bricks this frame to avoid multiple hits
-                if (!ball.isPenetrating) break;
+                // If the ball bounced, we stop checking this ball for other bricks this frame
+                if (shouldBounce) break;
               }
             }
           }
