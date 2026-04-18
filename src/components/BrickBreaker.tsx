@@ -35,35 +35,45 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
   const scoreRef = useRef(0);
 
   const getBrickLayout = (currentStage: number) => {
+    const layoutIndex = ((currentStage - 1) % 5) + 1;
     const layouts: { [key: number]: number[][] } = {
-      1: [
+      1: [ // Classic Grid
         [1, 1, 1, 1, 1],
+        [1, 2, 1, 2, 1],
         [1, 1, 1, 1, 1],
-        [1, 1, 1, 1, 1],
-        [1, 1, 1, 1, 1],
-        [1, 1, 1, 1, 1],
+        [1, 2, 1, 2, 1],
         [1, 1, 1, 1, 1],
       ],
-      2: [
-        [0, 1, 1, 1, 0],
+      2: [ // Diamond
+        [0, 0, 2, 0, 0],
+        [0, 2, 1, 2, 0],
+        [2, 1, 1, 1, 2],
+        [0, 2, 1, 2, 0],
+        [0, 0, 2, 0, 0],
+      ],
+      3: [ // Columns
+        [1, 2, 0, 2, 1],
+        [1, 2, 0, 2, 1],
+        [1, 2, 0, 2, 1],
+        [1, 2, 0, 2, 1],
+        [1, 2, 0, 2, 1],
+      ],
+      4: [ // Pyramid
+        [0, 0, 1, 0, 0],
+        [0, 1, 2, 1, 0],
+        [1, 2, 2, 2, 1],
+        [2, 1, 1, 1, 2],
         [1, 1, 1, 1, 1],
-        [1, 1, 1, 1, 1],
-        [1, 1, 1, 1, 1],
-        [1, 1, 1, 1, 1],
-        [0, 1, 1, 1, 0],
+      ],
+      5: [ // Cross / Heart-ish
+        [1, 0, 0, 0, 1],
+        [1, 1, 0, 1, 1],
+        [0, 2, 2, 2, 0],
+        [0, 1, 2, 1, 0],
         [0, 0, 1, 0, 0],
       ],
-      3: [
-        [1, 0, 1, 0, 1],
-        [1, 1, 1, 1, 1],
-        [1, 0, 1, 0, 1],
-        [1, 1, 1, 1, 1],
-        [1, 0, 1, 0, 1],
-        [1, 1, 1, 1, 1],
-        [1, 1, 1, 1, 1],
-      ],
     };
-    return layouts[currentStage] || layouts[1].map(row => row.map(() => (Math.random() > 0.3 ? 1 : 0)));
+    return layouts[layoutIndex];
   };
 
   useEffect(() => {
@@ -149,39 +159,97 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
     canvas.addEventListener("touchstart", touchHandler, { passive: false });
     canvas.addEventListener("touchmove", touchHandler, { passive: false });
 
+    function ballsCollisionDetection() {
+      for (let i = 0; i < balls.length; i++) {
+        for (let j = i + 1; j < balls.length; j++) {
+          const b1 = balls[i];
+          const b2 = balls[j];
+          const dx = b2.x - b1.x;
+          const dy = b2.y - b1.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          const minDistance = b1.radius + b2.radius;
+
+          if (distance < minDistance) {
+            // Collision detected! Use elastic collision physics
+            // 1. Calculate collision normal
+            const nx = dx / distance;
+            const ny = dy / distance;
+
+            // 2. Relative velocity
+            const rvx = b2.dx - b1.dx;
+            const rvy = b2.dy - b1.dy;
+
+            // 3. Velocity along the normal
+            const velAlongNormal = rvx * nx + rvy * ny;
+
+            // Do not resolve if velocities are separating
+            if (velAlongNormal > 0) continue;
+
+            // 4. Impulse scalar (assuming equal mass)
+            const impulse = velAlongNormal;
+
+            // 5. Apply impulse
+            b1.dx += impulse * nx;
+            b1.dy += impulse * ny;
+            b2.dx -= impulse * nx;
+            b2.dy -= impulse * ny;
+
+            // 6. Fix overlap (positional correction to prevent sticking)
+            const overlap = minDistance - distance;
+            const percent = 0.5; // push each ball back by half the overlap
+            const slop = 0.01;
+            const correction = Math.max(overlap - slop, 0) / 2 * percent;
+            const cx = nx * correction;
+            const cy = ny * correction;
+            b1.x -= cx;
+            b1.y -= cy;
+            b2.x += cx;
+            b2.y += cy;
+          }
+        }
+      }
+    }
+
     function collisionDetection() {
+      let cleared = false;
       for (let c = 0; c < brickColumnCount; c++) {
         for (let r = 0; r < brickRowCount; r++) {
           const b = bricks[c][r];
-          if (b.status === 1) {
+          if (b.status > 0) {
             for (let i = 0; i < balls.length; i++) {
               const ball = balls[i];
               if (ball.x > b.x && ball.x < b.x + brickWidth && ball.y > b.y && ball.y < b.y + brickHeight) {
-                if (ball.isPenetrating) {
-                  // Don't flip dy if penetrating
-                } else {
+                if (!ball.isPenetrating) {
                   ball.dy = -ball.dy;
                 }
-                b.status = 0;
-                scoreRef.current += 10;
-                setScore(scoreRef.current);
+                
+                b.status--;
+                
+                if (b.status === 0) {
+                  scoreRef.current += 10;
+                  setScore(scoreRef.current);
 
-                // Drop items with 33% probability
-                if (Math.random() < 0.33) {
-                  const types: ItemType[] = ['wider_paddle', 'extra_ball', 'penetrating', 'shield'];
-                  items.push({
-                    x: b.x + brickWidth / 2,
-                    y: b.y + brickHeight / 2,
-                    type: types[Math.floor(Math.random() * types.length)],
-                    status: 1
-                  });
+                  // Drop items with 33% probability
+                  if (Math.random() < 0.33) {
+                    const types: ItemType[] = ['wider_paddle', 'extra_ball', 'penetrating', 'shield'];
+                    items.push({
+                      x: b.x + brickWidth / 2,
+                      y: b.y + brickHeight / 2,
+                      type: types[Math.floor(Math.random() * types.length)],
+                      status: 1
+                    });
+                  }
+                } else {
+                  // Hit sound/effect for durable brick could go here
+                  scoreRef.current += 2;
+                  setScore(scoreRef.current);
                 }
                 
                 // Check if all bricks are cleared
                 let allCleared = true;
-                for (let i = 0; i < brickColumnCount; i++) {
-                  for (let j = 0; j < brickRowCount; j++) {
-                    if (bricks[i][j].status === 1) {
+                for (let bc = 0; bc < brickColumnCount; bc++) {
+                  for (let br = 0; br < brickRowCount; br++) {
+                    if (bricks[bc][br].status > 0) {
                       allCleared = false;
                       break;
                     }
@@ -190,13 +258,19 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
                 }
                 
                 if (allCleared) {
+                  cleared = true;
                   setGameState('next_stage');
+                  return true;
                 }
+
+                // If not penetrating, we stop checking this ball for other bricks this frame to avoid multiple hits
+                if (!ball.isPenetrating) break;
               }
             }
           }
         }
       }
+      return cleared;
     }
 
     function drawBalls() {
@@ -226,15 +300,27 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
       if (!ctx) return;
       for (let c = 0; c < brickColumnCount; c++) {
         for (let r = 0; r < brickRowCount; r++) {
-          if (bricks[c][r].status === 1) {
+          if (bricks[c][r].status > 0) {
             const brickX = c * (brickWidth + brickPadding) + brickOffsetLeft;
             const brickY = r * (brickHeight + brickPadding) + brickOffsetTop;
             bricks[c][r].x = brickX;
             bricks[c][r].y = brickY;
+            
             ctx.beginPath();
             ctx.roundRect(brickX, brickY, brickWidth, brickHeight, 3);
-            ctx.fillStyle = `hsl(${(c * 40 + r * 20 + stage * 30) % 360}, 70%, 60%)`;
-            ctx.fill();
+            
+            const hue = (c * 40 + r * 20 + stage * 30) % 360;
+            if (bricks[c][r].status === 2) {
+              // Hard brick: Darker and has a border
+              ctx.fillStyle = `hsl(${hue}, 70%, 35%)`;
+              ctx.fill();
+              ctx.strokeStyle = "#fff";
+              ctx.lineWidth = 1;
+              ctx.stroke();
+            } else {
+              ctx.fillStyle = `hsl(${hue}, 70%, 60%)`;
+              ctx.fill();
+            }
             ctx.closePath();
           }
         }
@@ -294,9 +380,12 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
 
       // Calculate Delta Time
       const currentTime = performance.now();
-      const deltaTime = currentTime - lastTime;
+      let deltaTime = currentTime - lastTime;
       lastTime = currentTime;
       
+      // Cap delta time to prevent massive jumps when tab is backgrounded
+      if (deltaTime > 100) deltaTime = 16.67;
+
       // Speed multiplier based on 60FPS target
       const dtScale = deltaTime / targetFrameTime;
 
@@ -307,7 +396,12 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
       drawPaddle();
       drawItems();
       drawShield();
-      collisionDetection();
+      
+      // Handle ball-to-ball collisions
+      ballsCollisionDetection();
+      
+      // If stage cleared in this frame, stop processing movement and physics
+      if (collisionDetection()) return;
 
       // Move items
       items.forEach(item => {
