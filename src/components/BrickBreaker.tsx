@@ -142,6 +142,7 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
     let preFeverHasShield = false;
     let preFeverIsInverted = false;
     let preFeverInversionTimer = 0;
+    let preFeverItems: Item[] = [];
 
     let balls: Ball[] = [{
       x: canvas.width / 2,
@@ -319,6 +320,7 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
                   preFeverHasShield = hasShield;
                   preFeverIsInverted = isInverted;
                   preFeverInversionTimer = inversionTimer;
+                  preFeverItems = items.map(item => ({ ...item }));
 
                   // Apply hyper speed to existing balls
                   balls.forEach(ball => {
@@ -592,6 +594,7 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
           hasShield = preFeverHasShield;
           isInverted = preFeverIsInverted;
           inversionTimer = preFeverInversionTimer;
+          items = preFeverItems.map(item => ({ ...item }));
         }
       }
 
