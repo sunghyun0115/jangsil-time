@@ -132,8 +132,15 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
     let isFeverMode = false;
     let feverTimer = 0;
     let feverLastBallSpawnTime = 0;
+    let feverLastBrickSpawnTime = 0;
     const feverDuration = 7000;
     const feverComboThreshold = 15;
+    let preFeverBricks: number[][] = [];
+    let preFeverBalls: Ball[] = [];
+    let preFeverPaddleWidth = 80;
+    let preFeverHasShield = false;
+    let preFeverIsInverted = false;
+    let preFeverInversionTimer = 0;
 
     let balls: Ball[] = [{
       x: canvas.width / 2,
@@ -299,7 +306,17 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
                   isFeverMode = true;
                   feverTimer = feverDuration;
                   feverLastBallSpawnTime = performance.now();
+                  feverLastBrickSpawnTime = performance.now();
                   comboCount = 0; // Reset combo for next fever cycle
+
+                  // Save current state for restoration
+                  preFeverBricks = bricks.map(col => col.map(b => b.status));
+                  preFeverBalls = balls.map(b => ({ ...b }));
+                  preFeverPaddleWidth = currentPaddleWidth;
+                  preFeverHasShield = hasShield;
+                  preFeverIsInverted = isInverted;
+                  preFeverInversionTimer = inversionTimer;
+
                   // Apply hyper speed to existing balls
                   balls.forEach(ball => {
                     ball.dx *= 1.75;
@@ -544,10 +561,35 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
           });
         }
 
+        // Randomly spawn bricks in empty spots every 0.3 seconds during Fever
+        if (currentTime - feverLastBrickSpawnTime >= 300) {
+          feverLastBrickSpawnTime = currentTime;
+          for (let i = 0; i < 5; i++) {
+            const rc = Math.floor(Math.random() * brickColumnCount);
+            const rr = Math.floor(Math.random() * brickRowCount);
+            const b = bricks[rc][rr];
+            if (b.status === 0 && b.respawnTimer <= 0) {
+              b.respawnTimer = 500; // 0.5s delay for random spawns too
+            }
+          }
+        }
+
         if (feverTimer <= 0) {
           isFeverMode = false;
-          setGameState('next_stage');
-          return; // Stop current frame as we move to next stage
+          // Restore saved state
+          for (let c = 0; c < brickColumnCount; c++) {
+            for (let r = 0; r < brickRowCount; r++) {
+              bricks[c][r].status = preFeverBricks[c][r];
+              bricks[c][r].respawnTimer = 0; // Clear any pending respawns
+            }
+          }
+          balls = preFeverBalls.map(b => ({ ...b }));
+          currentPaddleWidth = preFeverPaddleWidth;
+          hasShield = preFeverHasShield;
+          isInverted = preFeverIsInverted;
+          inversionTimer = preFeverInversionTimer;
+          
+          return;
         }
       }
 
