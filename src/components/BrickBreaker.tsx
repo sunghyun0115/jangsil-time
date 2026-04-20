@@ -588,8 +588,6 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
           hasShield = preFeverHasShield;
           isInverted = preFeverIsInverted;
           inversionTimer = preFeverInversionTimer;
-          
-          return;
         }
       }
 
