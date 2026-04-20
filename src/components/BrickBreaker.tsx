@@ -73,7 +73,17 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
         [0, 0, 1, 0, 0],
       ],
     };
-    return layouts[layoutIndex];
+    
+    const baseLayout = layouts[layoutIndex];
+    
+    // For stage 5+, upgrade some status 2 bricks to status 3
+    if (currentStage >= 5) {
+      return baseLayout.map(row => 
+        row.map(cell => (cell === 2 && Math.random() < 0.3) ? 3 : cell)
+      );
+    }
+    
+    return baseLayout;
   };
 
   useEffect(() => {
@@ -116,6 +126,14 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
     const targetFrameTime = 1000 / targetFPS; // ~16.67ms
 
     let comboCount = 0;
+    let lastBonusScore = 0;
+    const bonusThreshold = 1000;
+    
+    let isFeverMode = false;
+    let feverTimer = 0;
+    let feverLastBallSpawnTime = 0;
+    const feverDuration = 7000;
+    const feverComboThreshold = 15;
 
     let balls: Ball[] = [{
       x: canvas.width / 2,
@@ -131,11 +149,11 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
     let rightPressed = false;
     let leftPressed = false;
 
-    const bricks: { x: number; y: number; status: number }[][] = [];
+    const bricks: { x: number; y: number; status: number; respawnTimer: number }[][] = [];
     for (let c = 0; c < brickColumnCount; c++) {
       bricks[c] = [];
       for (let r = 0; r < brickRowCount; r++) {
-        bricks[c][r] = { x: 0, y: 0, status: currentLayout[c][r] };
+        bricks[c][r] = { x: 0, y: 0, status: currentLayout[c][r], respawnTimer: 0 };
       }
     }
 
@@ -223,9 +241,9 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
             for (let i = 0; i < balls.length; i++) {
               const ball = balls[i];
               if (ball.x > b.x && ball.x < b.x + brickWidth && ball.y > b.y && ball.y < b.y + brickHeight) {
-                // Penetrating ball should still bounce on durable bricks (status 2) 
+                // Ball should bounce on durable bricks (status 2 or 3) even if penetrating
                 // to prevent it from destroying them in a single pass.
-                const shouldBounce = !ball.isPenetrating || b.status === 2;
+                const shouldBounce = !ball.isPenetrating || b.status >= 2;
                 if (shouldBounce) {
                   ball.dy = -ball.dy;
                 }
@@ -260,13 +278,45 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
 
                 if (b.status === 0) {
                   const basePoints = 10;
-                  const finalPoints = basePoints * comboBonus;
+                  const pointsMultiplier = isFeverMode ? 2 : 1;
+                  const finalPoints = basePoints * comboBonus * pointsMultiplier;
                   scoreRef.current += finalPoints;
                   setScore(scoreRef.current);
+                  
+                  // Fever Mode individual brick regeneration (0.5s delay)
+                  if (isFeverMode && Math.random() < 0.7) {
+                    b.respawnTimer = 500;
+                  }
                 } else {
-                  const hitPoints = 2 * comboBonus;
+                  const pointsMultiplier = isFeverMode ? 2 : 1;
+                  const hitPoints = 2 * comboBonus * pointsMultiplier;
                   scoreRef.current += hitPoints;
                   setScore(scoreRef.current);
+                }
+                
+                // Fever Mode Trigger (Based on 10 Combo)
+                if (!isFeverMode && comboCount >= feverComboThreshold) {
+                  isFeverMode = true;
+                  feverTimer = feverDuration;
+                  feverLastBallSpawnTime = performance.now();
+                  comboCount = 0; // Reset combo for next fever cycle
+                  // Apply hyper speed to existing balls
+                  balls.forEach(ball => {
+                    ball.dx *= 1.75;
+                    ball.dy *= 1.75;
+                  });
+                }
+                
+                // Milestone Bonus Check
+                if (Math.floor(scoreRef.current / bonusThreshold) > Math.floor(lastBonusScore / bonusThreshold)) {
+                  lastBonusScore = scoreRef.current;
+                  const perks: ItemType[] = ['wider_paddle', 'extra_ball', 'penetrating', 'shield'];
+                  items.push({
+                    x: b.x + brickWidth / 2,
+                    y: b.y + brickHeight / 2,
+                    type: perks[Math.floor(Math.random() * perks.length)],
+                    status: 1
+                  });
                 }
                 
                 // Check if all bricks are cleared
@@ -282,9 +332,20 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
                 }
                 
                 if (allCleared) {
-                  cleared = true;
-                  setGameState('next_stage');
-                  return true;
+                  if (isFeverMode) {
+                    // Fallback regeneration if all bricks cleared during Fever
+                    for (let bc = 0; bc < brickColumnCount; bc++) {
+                      for (let br = 0; br < brickRowCount; br++) {
+                        if (currentLayout[bc][br] > 0) {
+                          bricks[bc][br].status = 1;
+                        }
+                      }
+                    }
+                  } else {
+                    cleared = true;
+                    setGameState('next_stage');
+                    return true;
+                  }
                 }
 
                 // If the ball bounced, we stop checking this ball for other bricks this frame
@@ -335,8 +396,15 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
             ctx.roundRect(brickX, brickY, brickWidth, brickHeight, 3);
             
             const hue = (c * 40 + r * 20 + stage * 30) % 360;
-            if (bricks[c][r].status === 2) {
-              // Hard brick: Darker and has a border
+            if (bricks[c][r].status === 3) {
+              // Extra Hard brick (3 hits): Very dark with thick border
+              ctx.fillStyle = `hsl(${hue}, 80%, 20%)`;
+              ctx.fill();
+              ctx.strokeStyle = "#fff";
+              ctx.lineWidth = 2;
+              ctx.stroke();
+            } else if (bricks[c][r].status === 2) {
+              // Hard brick (2 hits): Darker and has a border
               ctx.fillStyle = `hsl(${hue}, 70%, 35%)`;
               ctx.fill();
               ctx.strokeStyle = "#fff";
@@ -416,9 +484,9 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
       
       if (comboCount > 1) {
         ctx.textAlign = "center";
-        ctx.fillStyle = "#3b82f6";
-        ctx.font = "bold 18px Arial";
-        ctx.fillText(`${comboCount} COMBO!`, canvas!.width / 2, 60);
+        ctx.fillStyle = "rgba(59, 130, 246, 0.4)";
+        ctx.font = "bold 16px Arial";
+        ctx.fillText(`${comboCount} COMBO!`, canvas!.width / 2, canvas!.height - 5);
       }
 
       if (isInverted) {
@@ -426,6 +494,15 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
         ctx.fillStyle = "#475569";
         ctx.font = "bold 12px Arial";
         ctx.fillText("조작 반전 시전 중!", canvas!.width / 2, canvas!.height - 40);
+      }
+
+      if (isFeverMode) {
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#f59e0b";
+        ctx.font = "bold 20px Arial";
+        ctx.fillText("🔥 FEVER MODE 🔥", canvas!.width / 2, canvas!.height / 2 + 50);
+        ctx.font = "bold 12px Arial";
+        ctx.fillText(`${(feverTimer / 1000).toFixed(1)}s`, canvas!.width / 2, canvas!.height / 2 + 70);
       }
     }
 
@@ -450,8 +527,49 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
           isInverted = false;
         }
       }
+      
+      // Handle Fever Timer
+      if (isFeverMode) {
+        feverTimer -= deltaTime;
+        
+        // Spawn fireball every 0.5 seconds
+        if (currentTime - feverLastBallSpawnTime >= 500) {
+          feverLastBallSpawnTime = currentTime;
+          balls.push({
+            x: paddleX + currentPaddleWidth / 2,
+            y: canvas.height - 40,
+            dx: baseSpeed * 1.75 * (Math.random() > 0.5 ? 1 : -1),
+            dy: -baseSpeed * 1.75,
+            radius: 8
+          });
+        }
+
+        if (feverTimer <= 0) {
+          isFeverMode = false;
+          setGameState('next_stage');
+          return; // Stop current frame as we move to next stage
+        }
+      }
+
+      // Handle Brick Respawn Timers
+      for (let c = 0; c < brickColumnCount; c++) {
+        for (let r = 0; r < brickRowCount; r++) {
+          const b = bricks[c][r];
+          if (b.respawnTimer > 0) {
+            b.respawnTimer -= deltaTime;
+            if (b.respawnTimer <= 0) {
+              b.status = 1;
+              b.respawnTimer = 0;
+            }
+          }
+        }
+      }
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (isFeverMode) {
+        ctx.fillStyle = "rgba(254, 243, 199, 0.3)"; // Warm golden glow
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
       drawHUD();
       drawBricks();
       drawBalls();
@@ -544,14 +662,18 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
             ball.dx = baseSpeed * hitPos * 1.5;
             ball.dy = -Math.abs(ball.dy); // Ensure it goes up
             ball.isPenetrating = false; // Reset penetrating on paddle hit
-            comboCount = 0; // Reset combo on paddle hit
+            // comboCount no longer resets on paddle hit per user request
           } else if (nextY > canvas.height - ball.radius) {
-            if (hasShield) {
+            if (isFeverMode) {
+              // Invincible floor in Fever Mode
+              ball.dy = -Math.abs(ball.dy);
+            } else if (hasShield) {
               hasShield = false;
               ball.dy = -Math.abs(ball.dy);
             } else {
               balls.splice(i, 1);
               if (balls.length === 0) {
+                comboCount = 0; // Reset combo on life loss
                 if (livesRef.current > 1) {
                   livesRef.current--;
                   setLives(livesRef.current);
