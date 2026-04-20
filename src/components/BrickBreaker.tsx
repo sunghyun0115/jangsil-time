@@ -5,7 +5,7 @@ interface BrickBreakerProps {
   onFinish: () => void;
 }
 
-type ItemType = 'wider_paddle' | 'extra_ball' | 'penetrating' | 'shield';
+type ItemType = 'wider_paddle' | 'extra_ball' | 'penetrating' | 'shield' | 'shorter_paddle' | 'add_bricks' | 'inverted_controls' | 'fast_ball';
 
 interface Item {
   x: number;
@@ -87,8 +87,10 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
 
     // Game constants
     const paddleHeight = 12;
-    let currentPaddleWidth = Math.max(75 - (stage * 5), 50);
+    let currentPaddleWidth = 80;
     let hasShield = false;
+    let isInverted = false;
+    let inversionTimer = 0;
     
     const currentLayout = getBrickLayout(stage);
     const brickColumnCount = currentLayout.length;
@@ -112,6 +114,8 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
     let lastTime = performance.now();
     const targetFPS = 60;
     const targetFrameTime = 1000 / targetFPS; // ~16.67ms
+
+    let comboCount = 0;
 
     let balls: Ball[] = [{
       x: canvas.width / 2,
@@ -228,23 +232,40 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
                 
                 b.status--;
                 
-                // Drop items with 33% probability on EVERY hit (including durable brick hits)
+                // Combo logic
+                comboCount++;
+                const comboBonus = Math.max(1, Math.floor(comboCount / 3));
+
+                // Overall drop probability remains 33% per hit
                 if (Math.random() < 0.33) {
-                  const types: ItemType[] = ['wider_paddle', 'extra_ball', 'penetrating', 'shield'];
+                  // Within the drop, 20% chance it's a trap, 80% chance it's a perk
+                  const isTrap = Math.random() < 0.20;
+                  let selectedType: ItemType;
+                  
+                  if (isTrap) {
+                    const traps: ItemType[] = ['shorter_paddle', 'add_bricks', 'inverted_controls', 'fast_ball'];
+                    selectedType = traps[Math.floor(Math.random() * traps.length)];
+                  } else {
+                    const perks: ItemType[] = ['wider_paddle', 'extra_ball', 'penetrating', 'shield'];
+                    selectedType = perks[Math.floor(Math.random() * perks.length)];
+                  }
+
                   items.push({
                     x: b.x + brickWidth / 2,
                     y: b.y + brickHeight / 2,
-                    type: types[Math.floor(Math.random() * types.length)],
+                    type: selectedType,
                     status: 1
                   });
                 }
 
                 if (b.status === 0) {
-                  scoreRef.current += 10;
+                  const basePoints = 10;
+                  const finalPoints = basePoints * comboBonus;
+                  scoreRef.current += finalPoints;
                   setScore(scoreRef.current);
                 } else {
-                  // Hit sound/effect for durable brick could go here
-                  scoreRef.current += 2;
+                  const hitPoints = 2 * comboBonus;
+                  scoreRef.current += hitPoints;
                   setScore(scoreRef.current);
                 }
                 
@@ -279,11 +300,12 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
     function drawBalls() {
       if (!ctx) return;
       balls.forEach(ball => {
+        // Draw Ball
         ctx.beginPath();
         ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
         ctx.fillStyle = ball.isPenetrating ? "#ef4444" : "#3b82f6";
         ctx.fill();
-        ctx.shadowBlur = 10;
+        ctx.shadowBlur = ball.isPenetrating ? 15 : 10;
         ctx.shadowColor = ball.isPenetrating ? "#ef4444" : "#3b82f6";
         ctx.closePath();
         ctx.shadowBlur = 0;
@@ -339,15 +361,30 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
           
           let color = "#000";
           let label = "";
+          let isTrap = false;
+
           switch(item.type) {
             case 'wider_paddle': color = "#f59e0b"; label = "W"; break;
+            case 'shorter_paddle': color = "#475569"; label = "S"; isTrap = true; break;
             case 'extra_ball': color = "#10b981"; label = "+"; break;
             case 'penetrating': color = "#ef4444"; label = "P"; break;
-            case 'shield': color = "#ec4899"; label = "S"; break;
+            case 'shield': color = "#ec4899"; label = "B"; break;
+            case 'add_bricks': color = "#9333ea"; label = "A"; isTrap = true; break;
+            case 'inverted_controls': color = "#1e293b"; label = "I"; isTrap = true; break;
+            case 'fast_ball': color = "#7c2d12"; label = "F"; isTrap = true; break;
           }
           
           ctx.fillStyle = color;
           ctx.fill();
+
+          if (isTrap) {
+            ctx.setLineDash([2, 2]);
+            ctx.strokeStyle = "#fff";
+            ctx.lineWidth = 1;
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
+
           ctx.fillStyle = "#fff";
           ctx.font = "bold 10px Arial";
           ctx.textAlign = "center";
@@ -376,6 +413,20 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
       ctx.fillText(`Lives: ${livesRef.current}`, canvas!.width / 2, 25);
       ctx.textAlign = "right";
       ctx.fillText(`Score: ${scoreRef.current}`, canvas!.width - 15, 25);
+      
+      if (comboCount > 1) {
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#3b82f6";
+        ctx.font = "bold 18px Arial";
+        ctx.fillText(`${comboCount} COMBO!`, canvas!.width / 2, 60);
+      }
+
+      if (isInverted) {
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#475569";
+        ctx.font = "bold 12px Arial";
+        ctx.fillText("조작 반전 시전 중!", canvas!.width / 2, canvas!.height - 40);
+      }
     }
 
     function draw() {
@@ -392,12 +443,20 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
       // Speed multiplier based on 60FPS target
       const dtScale = deltaTime / targetFrameTime;
 
+      // Handle timers
+      if (inversionTimer > 0) {
+        inversionTimer -= deltaTime;
+        if (inversionTimer <= 0) {
+          isInverted = false;
+        }
+      }
+
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       drawHUD();
       drawBricks();
       drawBalls();
-      drawPaddle();
       drawItems();
+      drawPaddle();
       drawShield();
       
       // Handle ball-to-ball collisions
@@ -417,7 +476,33 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
             // Apply effect
             switch(item.type) {
               case 'wider_paddle':
-                currentPaddleWidth = Math.min(currentPaddleWidth + 30, 150);
+                currentPaddleWidth = Math.min(currentPaddleWidth + 30, 200);
+                break;
+              case 'shorter_paddle':
+                currentPaddleWidth = Math.max(currentPaddleWidth - 30, 40);
+                break;
+              case 'add_bricks': {
+                // Find empty spots to regenerate bricks (max 3)
+                let added = 0;
+                for (let attempt = 0; attempt < 15 && added < 3; attempt++) {
+                  const rc = Math.floor(Math.random() * brickColumnCount);
+                  const rr = Math.floor(Math.random() * brickRowCount);
+                  if (bricks[rc][rr].status === 0) {
+                    bricks[rc][rr].status = 1;
+                    added++;
+                  }
+                }
+                break;
+              }
+              case 'inverted_controls':
+                isInverted = true;
+                inversionTimer = 5000; // 5 seconds
+                break;
+              case 'fast_ball':
+                balls.forEach(b => {
+                  b.dx *= 1.3;
+                  b.dy *= 1.3;
+                });
                 break;
               case 'extra_ball':
                 balls.push({
@@ -459,6 +544,7 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
             ball.dx = baseSpeed * hitPos * 1.5;
             ball.dy = -Math.abs(ball.dy); // Ensure it goes up
             ball.isPenetrating = false; // Reset penetrating on paddle hit
+            comboCount = 0; // Reset combo on paddle hit
           } else if (nextY > canvas.height - ball.radius) {
             if (hasShield) {
               hasShield = false;
@@ -490,10 +576,18 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
         ball.y += ball.dy * dtScale;
       }
 
-      if (rightPressed && paddleX < canvas.width - currentPaddleWidth) {
-        paddleX += 8 * dtScale;
-      } else if (leftPressed && paddleX > 0) {
-        paddleX -= 8 * dtScale;
+      if (rightPressed) {
+        if (isInverted) {
+          if (paddleX > 0) paddleX -= 8 * dtScale;
+        } else {
+          if (paddleX < canvas.width - currentPaddleWidth) paddleX += 8 * dtScale;
+        }
+      } else if (leftPressed) {
+        if (isInverted) {
+          if (paddleX < canvas.width - currentPaddleWidth) paddleX += 8 * dtScale;
+        } else {
+          if (paddleX > 0) paddleX -= 8 * dtScale;
+        }
       }
 
       requestAnimationFrame(draw);
@@ -579,9 +673,9 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
       <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 w-full space-y-2">
         <p className="text-[10px] text-slate-400 text-center leading-relaxed">
           화면을 터치하여 패들을 조작하세요.<br/>
-          스테이지가 올라갈수록 공이 빨라지고 패들이 작아집니다!
+          스테이지가 올라갈수록 공의 속도가 빨라집니다!
         </p>
-        <div className="flex justify-center gap-3">
+        <div className="grid grid-cols-4 gap-y-2 gap-x-3 justify-items-center">
           <div className="flex items-center gap-1">
             <div className="w-3 h-3 rounded-full bg-[#f59e0b] flex items-center justify-center text-[6px] text-white font-bold">W</div>
             <span className="text-[8px] text-slate-500">패들 확장</span>
@@ -595,8 +689,24 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
             <span className="text-[8px] text-slate-500">관통공</span>
           </div>
           <div className="flex items-center gap-1">
-            <div className="w-3 h-3 rounded-full bg-[#ec4899] flex items-center justify-center text-[6px] text-white font-bold">S</div>
+            <div className="w-3 h-3 rounded-full bg-[#ec4899] flex items-center justify-center text-[6px] text-white font-bold">B</div>
             <span className="text-[8px] text-slate-500">바닥 보호</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded-full bg-[#1e293b] border border-dashed border-slate-400 flex items-center justify-center text-[6px] text-white font-bold">I</div>
+            <span className="text-[8px] text-slate-500 font-bold text-slate-600">조작 반전</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded-full bg-[#7c2d12] border border-dashed border-slate-400 flex items-center justify-center text-[6px] text-white font-bold">F</div>
+            <span className="text-[8px] text-slate-500 font-bold text-slate-600">공 속도 증가</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded-full bg-[#475569] border border-dashed border-slate-400 flex items-center justify-center text-[6px] text-white font-bold">S</div>
+            <span className="text-[8px] text-slate-500 font-bold text-slate-600">패들 축소</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded-full bg-[#9333ea] border border-dashed border-slate-400 flex items-center justify-center text-[6px] text-white font-bold">A</div>
+            <span className="text-[8px] text-slate-500 font-bold text-slate-600">벽돌 추가</span>
           </div>
         </div>
       </div>
