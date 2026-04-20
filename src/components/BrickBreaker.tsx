@@ -143,6 +143,7 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
     let preFeverIsInverted = false;
     let preFeverInversionTimer = 0;
     let preFeverItems: Item[] = [];
+    let hitBrickInCurrentBounce = false;
 
     let balls: Ball[] = [{
       x: canvas.width / 2,
@@ -258,6 +259,7 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
                 }
                 
                 b.status--;
+                hitBrickInCurrentBounce = true;
                 
                 // Combo logic (Disabled during Fever Mode to prevent infinite loops)
                 if (!isFeverMode) {
@@ -583,10 +585,12 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
           isFeverMode = false;
           feverCooldownTimer = 3000; // 3 second cooldown after fever ends
           // Restore saved state
+          let bricksRemainingAfterRestore = 0;
           for (let c = 0; c < brickColumnCount; c++) {
             for (let r = 0; r < brickRowCount; r++) {
               bricks[c][r].status = preFeverBricks[c][r];
               bricks[c][r].respawnTimer = 0; // Clear any pending respawns
+              if (bricks[c][r].status > 0) bricksRemainingAfterRestore++;
             }
           }
           balls = preFeverBalls.map(b => ({ ...b }));
@@ -595,6 +599,12 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
           isInverted = preFeverIsInverted;
           inversionTimer = preFeverInversionTimer;
           items = preFeverItems.map(item => ({ ...item }));
+          
+          // If no bricks were left before fever, clear the stage now
+          if (bricksRemainingAfterRestore === 0) {
+            setGameState('next_stage');
+            return;
+          }
         }
       }
 
@@ -716,7 +726,13 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
             ball.dx = baseSpeed * hitPos * 1.5;
             ball.dy = -Math.abs(ball.dy); // Ensure it goes up
             ball.isPenetrating = false; // Reset penetrating on paddle hit
-            // comboCount no longer resets on paddle hit per user request
+            
+            // Combo reset logic: If no bricks were hit since last paddle hit, reset combo.
+            // Also reset hit tracker for the next bounce.
+            if (!hitBrickInCurrentBounce) {
+              comboCount = 0;
+            }
+            hitBrickInCurrentBounce = false;
           } else if (nextY > canvas.height - ball.radius) {
             if (isFeverMode) {
               // Invincible floor in Fever Mode
