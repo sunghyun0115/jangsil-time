@@ -133,6 +133,7 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
     let feverTimer = 0;
     let feverLastBallSpawnTime = 0;
     let feverLastBrickSpawnTime = 0;
+    let feverCooldownTimer = 0; // Cooldown after fever ends
     const feverDuration = 7000;
     const feverComboThreshold = 15;
     let preFeverBricks: number[][] = [];
@@ -257,8 +258,10 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
                 
                 b.status--;
                 
-                // Combo logic
-                comboCount++;
+                // Combo logic (Disabled during Fever Mode to prevent infinite loops)
+                if (!isFeverMode) {
+                  comboCount++;
+                }
                 const comboBonus = Math.max(1, Math.floor(comboCount / 3));
 
                 // Overall drop probability remains 33% per hit
@@ -301,8 +304,8 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
                   setScore(scoreRef.current);
                 }
                 
-                // Fever Mode Trigger (Based on 10 Combo)
-                if (!isFeverMode && comboCount >= feverComboThreshold) {
+                // Fever Mode Trigger (Based on 15 Combo)
+                if (!isFeverMode && feverCooldownTimer <= 0 && comboCount >= feverComboThreshold) {
                   isFeverMode = true;
                   feverTimer = feverDuration;
                   feverLastBallSpawnTime = performance.now();
@@ -576,6 +579,7 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
 
         if (feverTimer <= 0) {
           isFeverMode = false;
+          feverCooldownTimer = 3000; // 3 second cooldown after fever ends
           // Restore saved state
           for (let c = 0; c < brickColumnCount; c++) {
             for (let r = 0; r < brickRowCount; r++) {
@@ -589,6 +593,11 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
           isInverted = preFeverIsInverted;
           inversionTimer = preFeverInversionTimer;
         }
+      }
+
+      // Update Cooldowns
+      if (feverCooldownTimer > 0) {
+        feverCooldownTimer -= deltaTime;
       }
 
       // Handle Brick Respawn Timers
