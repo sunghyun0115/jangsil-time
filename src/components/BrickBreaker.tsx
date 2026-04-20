@@ -577,8 +577,10 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
       drawPaddle();
       drawShield();
       
-      // Handle ball-to-ball collisions
-      ballsCollisionDetection();
+      // Handle ball-to-ball collisions (Disabled in Fever Mode)
+      if (!isFeverMode) {
+        ballsCollisionDetection();
+      }
       
       // If stage cleared in this frame, stop processing movement and physics
       if (collisionDetection()) return;
