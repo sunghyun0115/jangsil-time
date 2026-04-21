@@ -21,6 +21,7 @@ interface Ball {
   dy: number;
   radius: number;
   isPenetrating?: boolean;
+  hasHitBrick?: boolean;
 }
 
 export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
@@ -143,14 +144,14 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
     let preFeverIsInverted = false;
     let preFeverInversionTimer = 0;
     let preFeverItems: Item[] = [];
-    let hitBrickInCurrentBounce = false;
 
     let balls: Ball[] = [{
       x: canvas.width / 2,
       y: canvas.height - 40,
       dx: baseSpeed * (Math.random() > 0.5 ? 1 : -1),
       dy: -baseSpeed,
-      radius: 8
+      radius: 8,
+      hasHitBrick: false
     }];
 
     let items: Item[] = [];
@@ -259,7 +260,7 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
                 }
                 
                 b.status--;
-                hitBrickInCurrentBounce = true;
+                ball.hasHitBrick = true;
                 
                 // Combo logic (Disabled during Fever Mode to prevent infinite loops)
                 if (!isFeverMode) {
@@ -506,7 +507,7 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
       ctx.textAlign = "right";
       ctx.fillText(`Score: ${scoreRef.current}`, canvas!.width - 15, 25);
       
-      if (comboCount > 1) {
+      if (comboCount > 0) {
         ctx.textAlign = "center";
         ctx.fillStyle = "rgba(59, 130, 246, 0.4)";
         ctx.font = "bold 16px Arial";
@@ -564,7 +565,8 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
             y: canvas.height - 40,
             dx: baseSpeed * 1.75 * (Math.random() > 0.5 ? 1 : -1),
             dy: -baseSpeed * 1.75,
-            radius: 8
+            radius: 8,
+            hasHitBrick: false
           });
         }
 
@@ -692,7 +694,8 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
                   y: canvas.height - 40,
                   dx: baseSpeed * (Math.random() > 0.5 ? 1 : -1),
                   dy: -baseSpeed,
-                  radius: 8
+                  radius: 8,
+                  hasHitBrick: false
                 });
                 break;
               case 'penetrating':
@@ -727,12 +730,27 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
             ball.dy = -Math.abs(ball.dy); // Ensure it goes up
             ball.isPenetrating = false; // Reset penetrating on paddle hit
             
-            // Combo reset logic: If no bricks were hit since last paddle hit, reset combo.
-            // Also reset hit tracker for the next bounce.
-            if (!hitBrickInCurrentBounce) {
-              comboCount = 0;
+            // Combo reset logic: If this specific ball hasn't hit any bricks 
+            // since its last paddle hit, AND there are no other balls that
+            // have hit bricks recently? Actually, the user wants to avoid 
+            // resets when multiple balls are present.
+            // Let's make it so if ANY ball has hit a brick recently, we don't reset,
+            // OR simply check this ball's productivity.
+            
+            // If there's more than one ball, we follow a more lenient rule:
+            // only reset if ALL current balls are unproductive? 
+            // Or just check this ball specifically.
+            if (balls.length === 1) {
+              if (!ball.hasHitBrick) {
+                comboCount = 0;
+              }
+            } else {
+              // Multi-ball mode: Only reset if the user specifically asked for "strict"
+              // but here we'll be lenient to avoid the "hitting 2 balls resets it" issue.
+              // If this ball hit a brick, we are happy. If not, we don't reset the global 
+              // combo because other balls might be doing work.
             }
-            hitBrickInCurrentBounce = false;
+            ball.hasHitBrick = false;
           } else if (nextY > canvas.height - ball.radius) {
             if (isFeverMode) {
               // Invincible floor in Fever Mode
@@ -752,7 +770,8 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
                     y: canvas.height - 40,
                     dx: baseSpeed * (Math.random() > 0.5 ? 1 : -1),
                     dy: -baseSpeed,
-                    radius: 8
+                    radius: 8,
+                    hasHitBrick: false
                   });
                 } else {
                   livesRef.current = 0;
