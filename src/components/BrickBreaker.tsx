@@ -10,6 +10,8 @@ type ItemType = 'wider_paddle' | 'extra_ball' | 'penetrating' | 'shield' | 'shor
 interface Item {
   x: number;
   y: number;
+  dx: number;
+  dy: number;
   type: ItemType;
   status: number;
 }
@@ -282,9 +284,14 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
                     selectedType = perks[Math.floor(Math.random() * perks.length)];
                   }
 
+                  const vx = (Math.random() - 0.5) * 3;
+                  const vy = isFeverMode ? 4 : 2;
+
                   items.push({
                     x: b.x + brickWidth / 2,
                     y: b.y + brickHeight / 2,
+                    dx: vx,
+                    dy: vy,
                     type: selectedType,
                     status: 1
                   });
@@ -339,6 +346,8 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
                   items.push({
                     x: b.x + brickWidth / 2,
                     y: b.y + brickHeight / 2,
+                    dx: (Math.random() - 0.5) * 3,
+                    dy: isFeverMode ? 4 : 2,
                     type: perks[Math.floor(Math.random() * perks.length)],
                     status: 1
                   });
@@ -630,16 +639,20 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
       }
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+
       if (isFeverMode) {
         ctx.fillStyle = "rgba(254, 243, 199, 0.3)"; // Warm golden glow
         ctx.fillRect(0, 0, canvas.width, canvas.height);
       }
-      drawHUD();
+
       drawBricks();
       drawBalls();
-      drawItems();
       drawPaddle();
+      drawItems();
+      
       drawShield();
+
+      drawHUD();
       
       // Handle ball-to-ball collisions (Disabled in Fever Mode)
       if (!isFeverMode) {
@@ -652,7 +665,16 @@ export default function BrickBreaker({ onFinish }: BrickBreakerProps) {
       // Move items
       items.forEach(item => {
         if (item.status === 1) {
-          item.y += 2 * dtScale;
+          item.x += item.dx * dtScale;
+          item.y += item.dy * dtScale;
+
+          // Side wall bouncing
+          if (item.x < 10 || item.x > canvas.width - 10) {
+            item.dx = -item.dx;
+            // Prevent getting stuck outside boundaries
+            item.x = Math.max(10, Math.min(canvas.width - 10, item.x));
+          }
+
           // Paddle collision
           if (item.y + 10 > canvas.height - paddleHeight - 15 && 
               item.x > paddleX && item.x < paddleX + currentPaddleWidth) {
